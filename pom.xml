@@ -37,7 +37,7 @@
 						<password>${password}</password>
 						<applicationName>demo-mule-app-github-cicd</applicationName>
 						<environment>${environment}</environment>
-						<region>us-e2</region>
+						<region>ap-northeast-1</region>
 						<workers>1</workers>
 						<workerType>MICRO</workerType>
 						<properties>
