@@ -9,7 +9,7 @@ http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/htt
 	</http:listener-config>
 	<flow name="helloworldFlow" doc:id="662f8599-34a3-4afc-be30-1d3eb508cfb3" >
 		<http:listener doc:name="Listener" doc:id="71383903-815e-4535-a5f7-d6c86913d6c7" config-ref="HTTP_Listener_config" path="/helloworld"/>
-		<set-payload value="Hello World" doc:name="Set Payload" doc:id="a29a6c25-b055-4d0a-8261-44b40e60e161" />
+		<set-payload value="Hello World 20220825" doc:name="Set Payload" doc:id="a29a6c25-b055-4d0a-8261-44b40e60e161" />
 		<logger level="INFO" doc:name="Logger" doc:id="9c03696b-c51b-47f9-98cc-5bc5e69199df" />
 	</flow>
 </mule>
