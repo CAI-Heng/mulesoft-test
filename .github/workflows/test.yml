@@ -1,0 +1,614 @@
+name: reusable_mule_deploy
+on:
+  workflow_call:
+    inputs:
+      env_name:
+        type: string
+        required: false
+        description: "ENV Name(手動キック用)"
+
+      env_names:
+        type: string
+        required: false
+        description: "ENV Names"
+
+      cicd:
+        type: string
+        required: false
+        description: "CICDテスト用パラメター"
+      
+    secrets:
+      dev_client_id:
+        required: false
+      dev_client_secret:
+        required: false
+      dev_consumerkey:
+        required: false
+      dev_deploy_app_client_id:
+        required: false
+      dev_deploy_app_client_secret:
+        required: false
+      dev_pass:
+        required: false
+      dev_storepassword:
+        required: false
+      dev_user:
+        required: false
+      tst_client_id:
+        required: false
+      tst_client_secret:
+        required: false
+      tst_consumerkey:
+        required: false
+      tst_pass:
+        required: false
+      tst_storepassword:
+        required: false
+      tst_user:
+        required: false
+      stg_client_id:
+        required: false
+      stg_client_secret:
+        required: false
+      stg_consumerkey:
+        required: false
+      stg_pass:
+        required: false
+      stg_storepassword:
+        required: false
+      stg_user:
+        required: false
+      prd_client_id:
+        required: false
+      prd_client_secret:
+        required: false
+      prd_consumerkey:
+        required: false
+      prd_deploy_app_client_id:
+        required: false
+      prd_deploy_app_client_secret:
+        required: false
+      prd_pass:
+        required: false
+      prd_storepassword:
+        required: false
+      prd_user:
+        required: false
+      app_id_reusable:
+        required: true
+      private_key_reusable:
+        required: true
+        
+jobs:
+  log_inputs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      
+    - name: print params
+      run: |
+        echo "dev_client_id: ${{ secrets.dev_client_id }}"
+        echo "dev_client_secret: ${{ secrets.dev_client_secret }}"
+        echo "dev_consumerkey: ${{ secrets.dev_consumerkey }}"
+        echo "dev_deploy_app_client_id: ${{ secrets.dev_deploy_app_client_id }}"
+        echo "dev_deploy_app_client_secret: ${{ secrets.dev_deploy_app_client_secret }}"
+        echo "dev_pass: ${{ secrets.dev_pass }}"
+        echo "dev_storepassword: ${{ secrets.dev_storepassword }}"
+        echo "dev_user: ${{ secrets.dev_user }}"
+        echo "tst_client_id: ${{ secrets.tst_client_id }}"
+        echo "tst_client_secret: ${{ secrets.tst_client_secret }}"
+        echo "tst_consumerkey: ${{ secrets.tst_consumerkey }}"
+        echo "tst_pass: ${{ secrets.tst_pass }}"
+        echo "tst_storepassword: ${{ secrets.tst_storepassword }}"
+        echo "tst_user: ${{ secrets.tst_user }}"
+        echo "stg_client_id: ${{ secrets.stg_client_id }}"
+        echo "stg_client_secret: ${{ secrets.stg_client_secret }}"
+        echo "stg_consumerkey: ${{ secrets.stg_consumerkey }}"
+        echo "stg_pass: ${{ secrets.stg_pass }}"
+        echo "stg_storepassword: ${{ secrets.stg_storepassword }}"
+        echo "stg_user: ${{ secrets.stg_user }}"
+        echo "prd_client_id: ${{ secrets.prd_client_id }}"
+        echo "prd_client_secret: ${{ secrets.prd_client_secret }}"
+        echo "prd_consumerkey: ${{ secrets.prd_consumerkey }}"
+        echo "prd_deploy_app_client_id: ${{ secrets.prd_deploy_app_client_id }}"
+        echo "prd_deploy_app_client_secret: ${{ secrets.prd_deploy_app_client_secret }}"
+        echo "prd_pass: ${{ secrets.prd_pass }}"
+        echo "prd_storepassword: ${{ secrets.prd_storepassword }}"
+        echo "prd_user: ${{ secrets.prd_user }}"
+        echo "app_id_reusable: ${{ secrets.app_id_reusable }}"
+        echo "private_key_reusable: ${{ secrets.private_key_reusable }}"
+
+        
+  build_and_upload_assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: set cache
+        uses: actions/cache@v3.2.6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      
+      - name: Setup JDK & Maven Action
+        uses: s4u/setup-maven-action@v1.7.0
+        with:
+          java-version: 11
+          maven-version: 3.8.6
+
+      - name: Generate token with Github Apps
+        id: generate_token
+        uses: tibdex/github-app-token@v1.7.0
+        with:
+          app_id: ${{ secrets.app_id_reusable }}
+          private_key: ${{ secrets.private_key_reusable }}
+          repository: biccamera/mulesoft-ci-cd
+
+      - name: Print generated token for debug
+        run: |
+          echo token: ${{ steps.generate_token.outputs.token }}
+          
+      - name: checkout cicd repository
+        uses: actions/checkout@v3
+        with:
+          repository: biccamera/mulesoft-ci-cd
+          ref: main
+          token: ${{ steps.generate_token.outputs.token }}
+          path: cicd
+        
+      - name: checkout api repository
+        uses: actions/checkout@v3
+        with:
+          path: source
+      
+      - name: generate settings.xml
+        uses: cuchi/jinja2-action@v1.2.0
+        with:
+          template: ./cicd/common/settings.xml.j2
+          output_file: ./cicd/common/settings.xml
+          strict: true
+          variables: |
+            CONNECT_APP_CLIENT_ID=${{ secrets.dev_deploy_app_client_id }}
+            CONNECT_APP_CLIENT_SECRET=${{ secrets.dev_deploy_app_client_secret }}
+            
+      - name: debug settings.xml
+        run: |
+          wc -m ./cicd/common/settings.xml.j2
+          wc -m ./cicd/common/settings.xml
+          cat ./cicd/common/settings.xml
+      
+      - name: debug pom.xml
+        run: |
+          wc -m ./source/pom.xml
+          wc -m ./source/pom.xml
+          cat ./source/pom.xml
+
+      - name: Build with Maven
+        env:
+          IS_DEVELOP: ${{ contains(github.ref_name, 'develop') }}
+          IS_RELEASE_STG: ${{ contains(github.ref_name, 'release') && inputs.env_name == 'STG' }}
+          IS_RELEASE_PRD: ${{ contains(github.ref_name, 'release') && inputs.env_name == 'PRD' }}
+          IS_HOTFIX: ${{ contains(github.ref_name, 'hotfix') }}
+
+          ENV_SUFFIX: ${{ (IS_DEVELOP && 'dev') || (IS_RELEASE_STG && 'stg') || (IS_RELEASE_PRD || IS_HOTFIX) && 'prd' }}
+          MULE_ENV: ${{ (IS_DEVELOP && 'config-dev') || (IS_RELEASE_STG && 'config-stg') || (IS_RELEASE_PRD || IS_HOTFIX) && 'config-prd' }}
+        run: |
+          mvn clean -B package -s ./cicd/common/settings.xml \
+          --file ./source/pom.xml -DskipTests=false \
+          -Dmule-env=$MULE_ENV \
+          -Dglobal-consumerkey=${{ secrets[ENV_SUFFIX+'_consumerkey'] }} \
+          -Dglobal-storepassword=${{ secrets[ENV_SUFFIX+'_storepassword'] }} \
+          -Dglobal-esas-client-id=${{ vars[ENV_SUFFIX+'_esas_client_id'] }} \
+          -Dglobal-esas-client-secret=${{ vars[ENV_SUFFIX+'_esas_client_secret'] }} \
+          -Dglobal-salesforce-client-id=${{ vars[ENV_SUFFIX+'_salesforce_client_id'] }} \
+          -Dglobal-salesforce-client-secret=${{ vars[ENV_SUFFIX+'_salesforce_client_secret'] }} \
+          -Dglobal-clouldhub-client-id=${{ vars[ENV_SUFFIX+'_clouldhub_client_id'] }} \
+          -Dglobal-clouldhub-client-secret=${{ vars[ENV_SUFFIX+'_clouldhub_client_secret'] }} \
+          -Dglobal-user=${{ secrets[ENV_SUFFIX+'_user'] }} \
+          -Dglobal-pass=${{ secrets[ENV_SUFFIX+'_pass'] }}
+  
+      - name: Upload artifact
+        env:
+          IS_DEVELOP: ${{ contains(github.ref_name, 'develop') }}
+          IS_RELEASE: ${{ contains(github.ref_name, 'release') }}
+          IS_HOTFIX: ${{ contains(github.ref_name, 'hotfix') }}
+        uses: actions/upload-artifact@master
+        with:
+          name: artifacts
+          path: source/target/*.jar
+          retention-days: ${{ (IS_DEVELOP && 3) || (IS_RELEASE || IS_HOTFIX) && 5 }}
+          
+  publish_to_exchange:
+    needs: build_and_upload_assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Setup JDK & Maven Action
+        uses: s4u/setup-maven-action@v1.7.0
+        with:
+          java-version: 11
+          maven-version: 3.8.6
+  
+      - name: Generate token with Github Apps
+        id: generate_token
+        uses: tibdex/github-app-token@v1.7.0
+        with:
+          app_id: ${{ secrets.app_id_reusable }}
+          private_key: ${{ secrets.private_key_reusable }}
+          repository: biccamera/mulesoft-ci-cd
+  
+      - name: Checkout API repository
+        uses: actions/checkout@v3
+  
+      - name: Checkout CI/CD repository
+        uses: actions/checkout@v3
+        with:
+          repository: biccamera/mulesoft-ci-cd
+          ref: main
+          token: ${{ steps.generate_token.outputs.token }}
+          path: cicd
+  
+      - name: Generate settings.xml
+        uses: cuchi/jinja2-action@v1.2.0
+        with:
+          template: ./cicd/common/settings.xml.j2
+          output_file: ./cicd/common/settings.xml
+          strict: true
+          variables: >
+            CONNECT_APP_CLIENT_ID=${{
+              (contains(github.ref_name, 'develop') && inputs.env_name == '') &&
+              secrets.dev_deploy_app_client_id ||
+              secrets.prd_deploy_app_client_id
+            }}
+            CONNECT_APP_CLIENT_SECRET=${{
+              (contains(github.ref_name, 'develop') && inputs.env_name == '') &&
+              secrets.dev_deploy_app_client_secret ||
+              secrets.prd_deploy_app_client_secret
+            }}
+  
+      - uses: actions/cache@v3.2.6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+  
+      - name: Publish to Exchange
+        if: >
+          (contains(github.ref_name, 'develop') && inputs.env_name == '') ||
+          (contains(github.ref_name, 'release') || inputs.env_name == 'STG' ||
+          inputs.env_name == 'PRD' || contains(github.ref_name, 'hotfix'))
+        run: |
+          mvn clean deploy -e \
+          -s ./cicd/common/settings.xml \
+          --file ./pom.xml \
+          -DskipTests=true
+
+  deploy_to_dev:
+    if: contains(github.ref_name, 'develop') && inputs.env_name == ''
+    needs: publish_to_exchange
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+
+      - name: Setup JDK & Maven Action
+        uses: s4u/setup-maven-action@v1.7.0
+        with:
+          java-version: 11
+          maven-version: 3.8.6
+
+      - name: Generate token with Github Apps
+        id: generate_token
+        uses: tibdex/github-app-token@v1.7.0
+        with:
+          app_id: ${{ secrets.app_id_reusable }}
+          private_key: ${{ secrets.private_key_reusable }}
+          repository: biccamera/mulesoft-ci-cd
+
+      - name: split string
+        id: split
+        uses: jungwinter/split@v2
+        with:
+          separator: ","
+          maxsplit: -1
+          msg: ${{ inputs.env_names }}
+      
+      - name: checkout api repository
+        uses: actions/checkout@v3
+      
+      - name: checkout cicd repository
+        uses: actions/checkout@v3
+        with:
+          repository: biccamera/mulesoft-ci-cd
+          ref: main
+          token: ${{ steps.generate_token.outputs.token }}
+          path: cicd
+
+      - name: generate settings.xml
+        uses: cuchi/jinja2-action@v1.2.0
+        with:
+          template: ./cicd/common/settings.xml.j2
+          output_file: ./cicd/common/settings.xml
+          strict: true
+          variables: |
+            CONNECT_APP_CLIENT_ID=${{ secrets.dev_deploy_app_client_id }}
+            CONNECT_APP_CLIENT_SECRET=${{ secrets.dev_deploy_app_client_secret }}
+
+      - name: lowercase environment name
+        id: lowercase-env-name
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ steps.split.outputs._0 }}
+ 
+      - uses: actions/cache@v3.2.6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Deploy to env
+        run: |
+          mvn deploy -e -DmuleDeploy \
+          -P dev \
+          -Denvironment=${{ steps.split.outputs._0 }} \
+          -Dmule-env=config-${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Dlow_case_environment=${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Denv_client_id=${{ secrets.dev_client_id }} \
+          -Denv_client_secret=${{ secrets.dev_client_secret }} \
+          -Dglobal-consumerkey=${{ secrets.dev_consumerkey }} \
+          -Dglobal-storepassword=${{ secrets.dev_storepassword }} \
+          -Dglobal-esas-client-id=${{ vars.dev_esas_client_id }} \
+          -Dglobal-esas-client-secret=${{ vars.dev_esas_client_secret }} \
+          -Dglobal-salesforce-client-id=${{ vars.dev_salesforce_client_id }} \
+          -Dglobal-salesforce-client-secret=${{ vars.dev_salesforce_client_secret }} \
+          -Dglobal-clouldhub-client-id=${{ vars.dev_clouldhub_client_id }} \
+          -Dglobal-clouldhub-client-secret=${{ vars.dev_clouldhub_client_secret }} \
+          -Dglobal-user=${{ secrets.dev_user }} \
+          -Dglobal-pass=${{ secrets.dev_pass }} \
+          -s ./cicd/common/settings.xml \
+          --file ./pom.xml \
+          -DskipTests=true
+
+  deploy_to_tst:
+    if: contains(github.ref_name, 'develop') && inputs.env_name == ''
+    needs: publish_to_exchange
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+  
+      - name: Setup JDK & Maven Action
+        uses: s4u/setup-maven-action@v1.7.0
+        with:
+          java-version: 11
+          maven-version: 3.8.6
+
+      - name: Generate token with Github Apps
+        id: generate_token
+        uses: tibdex/github-app-token@v1.7.0
+        with:
+          app_id: ${{ secrets.app_id_reusable }}
+          private_key: ${{ secrets.private_key_reusable }}
+          repository: biccamera/mulesoft-ci-cd
+
+      - name: split string
+        id: split
+        uses: jungwinter/split@v2
+        with:
+          separator: ","
+          maxsplit: -1
+          msg: ${{ inputs.env_names }}
+      
+      - name: checkout api repository
+        uses: actions/checkout@v3
+      
+      - name: checkout cicd repository
+        uses: actions/checkout@v3
+        with:
+          repository: biccamera/mulesoft-ci-cd
+          ref: main
+          token: ${{ steps.generate_token.outputs.token }}
+          path: cicd
+ 
+      - name: generate settings.xml
+        uses: cuchi/jinja2-action@v1.2.0
+        with:
+          template: ./cicd/common/settings.xml.j2
+          output_file: ./cicd/common/settings.xml
+          strict: true
+          variables: |
+            CONNECT_APP_CLIENT_ID=${{ secrets.dev_deploy_app_client_id }}
+            CONNECT_APP_CLIENT_SECRET=${{ secrets.dev_deploy_app_client_secret }}
+
+      - name: lowercase environment name
+        id: lowercase-env-name
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ steps.split.outputs._1 }}
+ 
+      - uses: actions/cache@v3.2.6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Deploy to env
+        run: |
+          mvn deploy -e -DmuleDeploy \
+          -P tst \
+          -Denvironment=${{ steps.split.outputs._1 }} \
+          -Dmule-env=config-${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Dlow_case_environment=${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Denv_client_id=${{ secrets.tst_client_id }} \
+          -Denv_client_secret=${{ secrets.tst_client_secret }} \
+          -Dglobal-consumerkey=${{ secrets.tst_consumerkey }} \
+          -Dglobal-storepassword=${{ secrets.tst_storepassword }} \
+          -Dglobal-esas-client-id=${{ vars.tst_esas_client_id }} \
+          -Dglobal-esas-client-secret=${{ vars.tst_esas_client_secret }} \
+          -Dglobal-salesforce-client-id=${{ vars.tst_salesforce_clienT_ID }} \
+          -Dglobal-salesforce-client-secret=${{ vars.tst_salesforce_client_secret }} \
+          -Dglobal-clouldhub-client-id=${{ vars.tst_clouldhub_client_id }} \
+          -Dglobal-clouldhub-client-secret=${{ vars.tst_clouldhub_client_secret }} \
+          -Dglobal-user=${{ secrets.tst_user }} \
+          -Dglobal-pass=${{ secrets.tst_pass }} \
+          -s ./cicd/common/settings.xml \
+          --file ./pom.xml \
+          -DskipTests=true
+
+  deploy_to_stg:
+    if: inputs.env_name == 'STG'
+    needs: publish_to_exchange
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+
+      - name: Setup JDK & Maven Action
+        uses: s4u/setup-maven-action@v1.7.0
+        with:
+          java-version: 11
+          maven-version: 3.8.6
+
+      - name: Generate token with Github Apps
+        id: generate_token
+        uses: tibdex/github-app-token@v1.7.0
+        with:
+          app_id: ${{ secrets.app_id_reusable }}
+          private_key: ${{ secrets.private_key_reusable }}
+          repository: biccamera/mulesoft-ci-cd
+      
+      - name: checkout api repository
+        uses: actions/checkout@v3
+      
+      - name: checkout cicd repository
+        uses: actions/checkout@v3
+        with:
+          repository: biccamera/mulesoft-ci-cd
+          ref: main
+          token: ${{ steps.generate_token.outputs.token }}
+          path: cicd
+ 
+      - name: generate settings.xml
+        uses: cuchi/jinja2-action@v1.2.0
+        with:
+          template: ./cicd/common/settings.xml.j2
+          output_file: ./cicd/common/settings.xml
+          strict: true
+          variables: |
+            CONNECT_APP_CLIENT_ID=${{ secrets.dev_deploy_app_client_id }}
+            CONNECT_APP_CLIENT_SECRET=${{ secrets.dev_deploy_app_client_secret }}
+
+      - name: lowercase environment name
+        id: lowercase-env-name
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ inputs.env_name }}
+ 
+      - uses: actions/cache@v3.2.6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Deploy to env
+        run: |
+          mvn deploy -e -DmuleDeploy \
+          -P stg \
+          -Denvironment=${{ inputs.env_name }} \
+          -Dmule-env=config-${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Dlow_case_environment=${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Denv_client_id=${{ secrets.stg_client_id }} \
+          -Denv_client_secret=${{ secrets.stg_client_secret }} \
+          -Dglobal-consumerkey=${{ secrets.stg_consumerkey }} \
+          -Dglobal-storepassword=${{ secrets.stg_storepassword }} \
+          -Dglobal-esas-client-id=${{ vars.stg_esas_client_id }} \
+          -Dglobal-esas-client-secret=${{ vars.stg_esas_client_secret }} \
+          -Dglobal-salesforce-client-id=${{ vars.stg_salesforce_client_id }} \
+          -Dglobal-salesforce-client-secret=${{ vars.stg_salesforce_client_secret }} \
+          -Dglobal-clouldhub-client-id=${{ vars.stg_clouldhub_client_id }} \
+          -Dglobal-clouldhub-client-secret=${{ vars.stg_clouldhub_client_secret }} \
+          -Dglobal-user=${{ secrets.stg_user }} \
+          -Dglobal-pass=${{ secrets.stg_pass }} \
+          -s ./cicd/common/settings.xml \
+          --file ./pom.xml \
+          -DskipTests=true
+
+  deploy_to_prd:
+    if: (contains(github.ref_name, 'release') || contains(github.ref_name, 'hotfix')) && inputs.env_name == 'PRD'
+    needs: publish_to_exchange
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+
+      - name: Setup JDK & Maven Action
+        uses: s4u/setup-maven-action@v1.7.0
+        with:
+          java-version: 11
+          maven-version: 3.8.6
+
+      - name: Generate token with Github Apps
+        id: generate_token
+        uses: tibdex/github-app-token@v1.7.0
+        with:
+          app_id: ${{ secrets.app_id_reusable }}
+          private_key: ${{ secrets.private_key_reusable }}
+          repository: biccamera/mulesoft-ci-cd
+
+      - name: checkout api repository
+        uses: actions/checkout@v3
+      
+      - name: checkout cicd repository
+        uses: actions/checkout@v3
+        with:
+          repository: biccamera/mulesoft-ci-cd
+          ref: main
+          token: ${{ steps.generate_token.outputs.token }}
+          path: cicd
+ 
+      - name: generate settings.xml
+        uses: cuchi/jinja2-action@v1.2.0
+        with:
+          template: ./cicd/common/settings.xml.j2
+          output_file: ./cicd/common/settings.xml
+          strict: true
+          variables: |
+            CONNECT_APP_CLIENT_ID=${{ secrets.prd_deploy_app_client_id }}
+            CONNECT_APP_CLIENT_SECRET=${{ secrets.prd_deploy_app_client_secret }}
+
+      - name: lowercase environment name
+        id: lowercase-env-name
+        uses: ASzc/change-string-case-action@v5
+        with:
+          string: ${{ inputs.env_name }}
+ 
+      - uses: actions/cache@v3.2.6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Deploy to env
+        run: |
+          mvn deploy -e -DmuleDeploy \
+          -P prd \
+          -Denvironment=${{ inputs.env_name }} \
+          -Dmule-env=config-${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Dlow_case_environment=${{ steps.lowercase-env-name.outputs.lowercase }} \
+          -Denv_client_id=${{ secrets.prd_client_id }} \
+          -Denv_client_secret=${{ secrets.prd_client_secret }} \
+          -Dglobal-consumerkey=${{ secrets.prd_consumerkey }} \
+          -Dglobal-storepassword=${{ secrets.prd_storepassword }} \
+          -Dglobal-esas-client-id=${{ vars.prd_esas_client_id }} \
+          -Dglobal-esas-client-secret=${{ vars.prd_esas_client_secret }} \
+          -Dglobal-salesforce-client-id=${{ vars.prd_salesforce_client_id }} \
+          -Dglobal-salesforce-client-secret=${{ vars.prd_salesforce_client_secret }} \
+          -Dglobal-clouldhub-client-id=${{ vars.prd_clouldhub_client_id }} \
+          -Dglobal-clouldhub-client-secret=${{ vars.prd_clouldhub_client_secret }} \
+          -Dglobal-user=${{ secrets.prd_user }} \
+          -Dglobal-pass=${{ secrets.prd_pass }} \
+          -s ./cicd/common/settings.xml \
+          --file ./pom.xml \
+          -DskipTests=true
